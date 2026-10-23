@@ -328,6 +328,10 @@ def build_gsub(glyph_names, ligature_glyphs, alternate_glyphs, cmap):
             lig.Component = rest
             lig.CompCount = len(g.components)
             lig_by_first.setdefault(first, []).append(lig)
+        # The first matching ligature wins, so try longer ones first
+        # (e.g. `<->` before `<-`).
+        for ligs in lig_by_first.values():
+            ligs.sort(key=lambda lig: -lig.CompCount)
 
         subst = LigatureSubst()
         subst.ligatures = lig_by_first
