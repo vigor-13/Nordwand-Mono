@@ -25,7 +25,7 @@ Stylistic sets switch groups of related glyphs at once: `ss02` enables the arrow
 
 ## Ligatures
 
-The font includes minimal `->`, `<-` and `=>` ligatures. Repeated `=`, `-`, `_`, and
+The font includes minimal `->`, `<-`, `<->` and `=>` ligatures. Repeated `=`, `-`, `_`, and
 `#` characters can use joining forms, allowing their horizontal bars to
 connect across runs of any length. These are off by default; enable the `dlig`
 feature to turn them on (see the [stylistic sets document](doc/stylistic_sets.md)).
