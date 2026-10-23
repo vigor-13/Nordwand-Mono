@@ -5,14 +5,14 @@ by default and can be turned on independently.
 
 | Feature | Affects | Effect |
 | --- | --- | --- |
-| `ss02` | `->` `<-` `<->` `=>` | Turns on the arrow ligatures, even where standard ligatures (`liga`) are disabled |
-| `ss03` | `<` `>` `->` `<-` `<->` `=>` | Uses a wide angle for the comparison signs and the arrow heads |
+| `ss02` | `->` `<-` `<->` `-->` `=>` | Turns on the arrow ligatures, even where standard ligatures (`liga`) are disabled |
+| `ss03` | `<` `>` and the arrows, also inside `<=` `>=` `</` `/>` `<!--` | Uses a wide angle for the comparison signs and the arrow heads |
 | `dlig` | `=` `-` `_` `#` | Joins the horizontal bars of repeated characters |
 
 ## `ss02` — arrow ligatures
 
-`->`, `<-` and `=>` are drawn as single arrows spanning two cells, `<->` as
-one spanning three. They belong to
+`->`, `<-` and `=>` are drawn as single arrows spanning two cells, `<->` and
+`-->` as ones spanning three. They belong to
 both the standard ligatures (`liga`, on by default) and `ss02`. Many editors
 and terminals turn off `liga` for code; enabling `ss02` brings the arrows back
 without enabling any other ligature.
@@ -20,7 +20,7 @@ without enabling any other ligature.
 ## `ss03` — wide comparison signs and arrows
 
 By default, `<` and `>` use a narrow angle, close to most coding fonts. `ss03`
-switches them to a taller, wider-angled design, and gives the `->`, `<-`, `<->` and `=>`
+switches them to a taller, wider-angled design, and gives the `->`, `<-`, `<->`, `-->` and `=>`
 ligatures the matching arrow head.
 
 | Character | Default | `ss03` |
