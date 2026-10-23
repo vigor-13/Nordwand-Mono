@@ -510,6 +510,18 @@ def build_gsub(glyph_names, ligature_glyphs, alternate_glyphs, cmap):
     gsub.ScriptList.ScriptCount = 1
     gsub.ScriptList.ScriptRecord = [script_record]
 
+    # Coverage tables must list glyphs in glyph ID order, or shapers that
+    # binary-search them miss glyphs (e.g. a forbidden neighbor list).
+    order = {name: i for i, name in enumerate(glyph_names)}
+    for lookup in lookups:
+        for st in lookup.SubTable:
+            for cov in (
+                *getattr(st, "BacktrackCoverage", []),
+                *getattr(st, "InputCoverage", []),
+                *getattr(st, "LookAheadCoverage", []),
+            ):
+                cov.glyphs.sort(key=order.__getitem__)
+
     return gsub_table
 
 
