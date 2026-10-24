@@ -198,6 +198,11 @@ def _chain_subtable(input_seq, backtrack, lookahead, subst_records):
     return st
 
 
+def is_split_ligature(glyph):
+    """Whether a ligature is built from one glyph per cell."""
+    return isinstance(glyph, LigatureGlyph) and glyph.number_characters > 1
+
+
 def build_gsub(glyph_names, ligature_glyphs, alternate_glyphs, cmap):
     """Build a GSUB table with ligature and alternate substitutions."""
     gsub_table = newTable("GSUB")
@@ -298,18 +303,40 @@ def build_gsub(glyph_names, ligature_glyphs, alternate_glyphs, cmap):
         lookups.append(lookup)
         add_feature(tag, [lookup_idx])
 
+    def in_font(g):
+        name = g.parts()[0].name if is_split_ligature(g) else g.name
+        return name in glyph_names
+
+    def part_records(g):
+        """Lookups turning each component of `g` into its own cell glyph."""
+        records = []
+        for i, (component, part) in enumerate(zip(g.components, g.parts())):
+            single = SingleSubst()
+            single.mapping = {component: part.name}
+            lookup = Lookup()
+            lookup.LookupType = 1
+            lookup.LookupFlag = 0
+            lookup.SubTableCount = 1
+            lookup.SubTable = [single]
+            rec = SubstLookupRecord()
+            rec.SequenceIndex = i
+            rec.LookupListIndex = len(lookups)
+            lookups.append(lookup)
+            records.append(rec)
+        return records
+
     # Split ligatures: regular (unconditional) vs contextual (neighbor-gated)
     regular_ligs = [
         g
         for g in ligature_glyphs
         if isinstance(g, LigatureGlyph)
         and not isinstance(g, ContextualLigatureGlyph)
-        and g.name in glyph_names
+        and in_font(g)
     ]
     contextual_ligs = [
         g
         for g in ligature_glyphs
-        if isinstance(g, ContextualLigatureGlyph) and g.name in glyph_names
+        if isinstance(g, ContextualLigatureGlyph) and in_font(g)
     ]
 
     # Build regular ligature lookups, grouped by their OpenType feature.
@@ -319,8 +346,33 @@ def build_gsub(glyph_names, ligature_glyphs, alternate_glyphs, cmap):
             regular_ligs_by_feature.setdefault(tag, []).append(g)
 
     for tag in sorted(regular_ligs_by_feature):
+        # Multi-cell ligatures: one chain lookup that swaps every character
+        # for its cell. The first matching subtable wins, so longer first.
+        split = [g for g in regular_ligs_by_feature[tag] if is_split_ligature(g)]
+        split.sort(key=lambda g: -len(g.components))
+        if split:
+            subtables = [
+                _chain_subtable(
+                    input_seq=g.components,
+                    backtrack=[],
+                    lookahead=[],
+                    subst_records=part_records(g),
+                )
+                for g in split
+            ]
+            chain_lookup = Lookup()
+            chain_lookup.LookupType = 6
+            chain_lookup.LookupFlag = 0
+            chain_lookup.SubTable = subtables
+            chain_lookup.SubTableCount = len(subtables)
+            add_feature(tag, [len(lookups)])
+            lookups.append(chain_lookup)
+
+        whole = [g for g in regular_ligs_by_feature[tag] if not is_split_ligature(g)]
+        if not whole:
+            continue
         lig_by_first = {}
-        for g in regular_ligs_by_feature[tag]:
+        for g in whole:
             first = g.components[0]
             rest = g.components[1:]
             lig = Ligature()
@@ -347,29 +399,15 @@ def build_gsub(glyph_names, ligature_glyphs, alternate_glyphs, cmap):
         add_feature(tag, [lookup_idx])
 
     # Build contextual ligature lookups (`calt`).
-    # For each contextual ligature, emit a nested LookupType 4 that does the
-    # actual substitution, plus a LookupType 6 chain-context wrapper with
+    # For each contextual ligature, emit nested single substitutions that swap
+    # each character for its cell, plus a LookupType 6 chain-context wrapper with
     # ignore-subtables that suppress the match when a forbidden neighbor
     # appears before or after the input sequence. Longer ligatures are
     # referenced first so the shaper tries them before shorter ones.
     contextual_ligs.sort(key=lambda g: -len(g.components))
     contextual_lookup_indices = {}
     for g in contextual_ligs:
-        lig = Ligature()
-        lig.LigGlyph = g.name
-        lig.Component = g.components[1:]
-        lig.CompCount = len(g.components)
-
-        nested_subst = LigatureSubst()
-        nested_subst.ligatures = {g.components[0]: [lig]}
-
-        nested_lookup = Lookup()
-        nested_lookup.LookupType = 4
-        nested_lookup.LookupFlag = 0
-        nested_lookup.SubTableCount = 1
-        nested_lookup.SubTable = [nested_subst]
-        nested_idx = len(lookups)
-        lookups.append(nested_lookup)
+        records = part_records(g)
 
         chain_lookup = Lookup()
         chain_lookup.LookupType = 6
@@ -392,15 +430,12 @@ def build_gsub(glyph_names, ligature_glyphs, alternate_glyphs, cmap):
                     subst_records=[],
                 )
             )
-        rec = SubstLookupRecord()
-        rec.SequenceIndex = 0
-        rec.LookupListIndex = nested_idx
         subtables.append(
             _chain_subtable(
                 input_seq=g.components,
                 backtrack=[],
                 lookahead=[],
-                subst_records=[rec],
+                subst_records=records,
             )
         )
         chain_lookup.SubTable = subtables
@@ -682,6 +717,12 @@ def build_font(
             cmap[int(g.unicode, 16)] = g.name
         if isinstance(g, (LigatureGlyph, InfiniteLigatureForm)):
             ligature_glyphs.append(g)
+    # Multi-cell ligatures are drawn as one glyph per cell (see build_gsub).
+    active_glyphs = [
+        part
+        for g in active_glyphs
+        for part in (g.parts() if is_split_ligature(g) else [g])
+    ]
 
     if otf:
         _build_otf(

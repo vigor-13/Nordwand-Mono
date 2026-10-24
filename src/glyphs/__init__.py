@@ -141,6 +141,55 @@ class LigatureGlyph(Glyph):
     @abstractmethod
     def components(self) -> list[str]: ...
 
+    def parts(self):
+        """One glyph per cell, so every character keeps its own glyph."""
+        return [LigaturePartGlyph(self, i) for i in range(self.number_characters)]
+
+
+class LigaturePartGlyph(Glyph):
+    """One cell of a multi-cell ligature, cut out of the full drawing.
+
+    Editors and browsers handle one glyph per character far better than one
+    glyph spanning several characters (e.g. when syntax highlighting puts
+    `-` and `>` in different elements). The outer cells keep anything drawn
+    past the ligature's edges.
+    """
+
+    generated_only = True
+    name = None
+    unicode = None
+    offset = 0
+    number_characters = 1
+    font_feature = None
+    default_italic = False
+    italic_only = False
+
+    def __init__(self, source, index):
+        self.source = source
+        self.index = index
+        self.name = f"{source.name}.{index + 1}"
+
+    def draw(self, pen, dc):
+        import pathops
+        from fontTools.pens.transformPen import TransformPen
+
+        full = pathops.Path()
+        self.source.draw(pathops.PathPen(full), dc)
+        w = dc.window_width
+        far = 10 * w
+        last = self.source.number_characters - 1
+        x1 = -far if self.index == 0 else self.index * w
+        x2 = far if self.index == last else (self.index + 1) * w
+        cell = pathops.Path()
+        cell_pen = pathops.PathPen(cell)
+        cell_pen.moveTo((x1, -far))
+        cell_pen.lineTo((x2, -far))
+        cell_pen.lineTo((x2, far))
+        cell_pen.lineTo((x1, far))
+        cell_pen.closePath()
+        part = pathops.op(full, cell, pathops.PathOp.INTERSECTION)
+        part.draw(TransformPen(pen, (1, 0, 0, 1, -self.index * w, 0)))
+
 
 class ContextualLigatureGlyph(LigatureGlyph):
     """Ligature that only fires when not adjacent to `forbidden_neighbors`.
